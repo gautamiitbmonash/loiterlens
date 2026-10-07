@@ -518,7 +518,7 @@ function setAuthMode(m) {
   $('#auPw').autocomplete = m === 'register' ? 'new-password' : 'current-password'; $('#authErr').textContent = '';
 }
 function refreshSetupWarn() {
-  const miss = [!sbConfigured() && 'Supabase', !cfg('GOOGLE_MAPS_KEY') && 'Google Street View'].filter(Boolean);
+  const miss = [!sbConfigured() && 'Supabase', !cfg('GOOGLE_MAPS_KEY') && 'Google Street View', !cfg('CARTO_BASEMAP_KEY') && 'CARTO basemap'].filter(Boolean);
   $('#setupWarn').textContent = miss.length ? `· not connected yet: ${miss.join(', ')}` : '· connected ✓';
 }
 $('#authForm').addEventListener('submit', async e => {
@@ -653,7 +653,12 @@ let map, layer, markers = {};
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([20, 78], 4);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>' }).addTo(map);
+  const cartoKey = cfg('CARTO_BASEMAP_KEY').trim();
+  const cartoUrl = `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoKey)}`;
+  L.tileLayer(cartoUrl, {
+    maxZoom: 20,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/attribution/">CARTO</a>'
+  }).addTo(map);
   layer = L.layerGroup().addTo(map);
   new ResizeObserver(() => map.invalidateSize()).observe($('#map'));
 }
@@ -1133,6 +1138,7 @@ function openSetup() {
     <label class="field"><span>Supabase project URL</span><input data-k="SUPABASE_URL" placeholder="https://xxxx.supabase.co" value="${v('SUPABASE_URL')}"></label>
     <label class="field"><span>Supabase anon / publishable key</span><input data-k="SUPABASE_KEY" type="password" value="${v('SUPABASE_KEY')}"></label>
     <label class="field"><span>Google Maps API key (Street View Static API)</span><input data-k="GOOGLE_MAPS_KEY" type="password" value="${v('GOOGLE_MAPS_KEY')}"></label>
+    <label class="field"><span>CARTO Basemaps API key</span><input data-k="CARTO_BASEMAP_KEY" type="password" value="${v('CARTO_BASEMAP_KEY')}" placeholder="Paste your CARTO Basemaps key"></label>
     <label class="field"><span>Points CSV (relative path or GitHub raw / blob URL)</span><input data-k="POINTS_CSV_URL" placeholder="points.csv" value="${v('POINTS_CSV_URL')}"></label>
     <div class="row"><button class="btn primary" id="setSave">Save</button></div>
     <details><summary>🧰 Supabase setup SQL</summary><pre id="sqlPre">${esc(SQL)}</pre><button class="btn sm" data-act="copysql">Copy SQL</button></details>`);
