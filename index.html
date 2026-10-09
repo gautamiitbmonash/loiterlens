@@ -233,6 +233,8 @@ summary{cursor:pointer;font-weight:700}
   .bar-row{grid-template-columns:110px 1fr 34px 28px}
   .map-wrap{flex:1}
 }
+
+.map-wrap{position:relative}.map-hint{background:#fff;padding:7px 9px;border-radius:10px;font-size:11px;font-weight:700;box-shadow:0 2px 10px rgba(42,26,58,.12)}.map-field-actions{position:absolute;z-index:500;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap}.map-field-actions .btn{box-shadow:0 2px 10px rgba(42,26,58,.16);background:#fff}.map-field-actions .btn:active{transform:translateY(1px)}
 </style>
 <script type="importmap">
 {"imports":{
@@ -259,7 +261,7 @@ summary{cursor:pointer;font-weight:700}
   </header>
 
   <aside class="side">
-    <div class="map-wrap"><div id="map"></div><button class="mini" data-act="fit" title="Fit all points">⤢</button></div>
+    <div class="map-wrap"><div id="map"></div><div class="map-field-actions"><span class="map-hint">Tap map to add · drag markers to move</span><button class="btn sm" data-act="locatePoint" title="Record your current GPS location">📍 GPS</button><button class="btn sm" data-act="uploadCsv" title="Optional: import points from CSV">＋ CSV</button></div><button class="mini" data-act="fit" title="Fit all points">⤢</button></div>
     <div class="list-head">
       <input id="search" placeholder="🔎 Search points…" autocomplete="off">
       <select id="filter"><option value="all">All</option><option value="todo">To do</option><option value="done">Done</option></select>
@@ -301,7 +303,6 @@ summary{cursor:pointer;font-weight:700}
       </form>
       <p class="fine" style="margin:12px 0 0">No email needed. Pick a simple user ID and a password you'll remember — if you forget it, ask your project coordinator to reset it.</p>
     </div>
-    <p class="fine" style="margin-top:14px"><a data-act="setup">⚙ Project setup</a> <span id="setupWarn"></span></p>
   </div>
 </section>
 
@@ -310,23 +311,26 @@ summary{cursor:pointer;font-weight:700}
   <div class="hero">
     <span class="pill" id="spUser">👋</span>
     <h1>Which <em>session</em> today?</h1>
-    <p class="lead">Enter your session number — or tap one below. Your progress is saved to your account.</p>
+    <p class="lead">Create a session, then record places and code them together in one workspace.</p>
     <div class="auth-card">
       <form id="sessForm" novalidate>
-        <label class="field"><span>Session number</span><input id="sessIn" inputmode="text" autocomplete="off" placeholder="e.g. 3"></label>
-        <div class="sess-chips" id="sessChips"><small>Loading sessions…</small></div>
+        <label class="field"><span>Session name or number</span><input id="sessIn" inputmode="text" autocomplete="off" placeholder="e.g. Mumbai walk 01"></label>
         <p class="err" id="sessErr"></p>
-        <button class="btn primary big block" type="submit">Start coding →</button>
+        <button class="btn primary big block" type="submit">Start fieldwork →</button>
       </form>
+      <p class="fine" style="margin:12px 0 0">You do <b>not</b> need a CSV. Add points directly on the map, use GPS, or optionally upload a CSV.</p>
     </div>
     <p class="fine" style="margin-top:14px"><a data-act="logout">Sign out</a></p>
   </div>
 </section>
 
+
 <div id="modalRoot"></div>
 <div id="toasts"></div>
 <div id="dragmask" class="hidden">📂 Drop panoramas — name them after the point ID to match automatically</div>
 <input type="file" id="fileImg" accept="image/*" multiple hidden>
+<input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileCsv" accept=".csv,text/csv" hidden>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -334,7 +338,7 @@ summary{cursor:pointer;font-weight:700}
 <script type="module">
 /* =====================================================================
    She Loiter Lens — single-file app.
-   Fill in CONFIG once (or use the in-app "Project setup" panel on the login page).
+   Project/API settings are managed by editing CONFIG in this file.
    Only ever use the *anon / publishable* Supabase key here.
    ===================================================================== */
 const CONFIG = {
@@ -342,7 +346,6 @@ const CONFIG = {
   SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuaWRxdmtsYWd3anJpaGxvY3hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1NDEwNzIsImV4cCI6MjEwMDExNzA3Mn0.R98ONf6DTove9-5Vp1zj-Q7-mc4zt9wid-Zpxny6ngs',              // anon / publishable key
   GOOGLE_MAPS_KEY: '',           // key with "Street View Static API" enabled (restrict it to your site's URL!)
   CARTO_BASEMAP_KEY: 'cb1_4d4m_1_a57cade09591c8022907f223',         // CARTO Basemaps API key; restrict it to your site's domain
-  POINTS_CSV_URL: 'points.csv',  // relative file in this repo, or a raw.githubusercontent.com / github.com/.../blob/... URL
   EMAIL_DOMAIN: 'sheloiterlens.app', // user IDs become <id>@this-domain behind the scenes (no email is ever sent)
   EXPORT_BUCKET: 'exports'       // Supabase Storage bucket used for share links
 };
@@ -369,32 +372,42 @@ const faceFor = v => v == null ? '' : SCORE[Math.min(5, Math.max(1, Math.round(v
 /* ---------- qualitative icon sets: Why Loiter + She City ---------- */
 const LENSES = [
   {
-    id: 'loiter', emoji: '🧺', name: 'Why Loiter', blurb: 'Women\'s right to linger, access and pleasure in public space (Phadke, Khan & Ranade).',
+    id: 'harassment', emoji: '🚨', name: 'Harassment & unwanted attention',
+    blurb: 'Use these icons first when the image shows or records street harassment, sexual harassment, intimidation or unwanted attention toward women and girls.',
     params: [
-      { key: 'linger', emoji: '🪑', label: 'Places to linger', desc: 'Seating, shade, ledges, tea stalls — reasons to stay without a purpose.', tags: ['Seating', 'Shade', 'Tea / food stall', 'Ledge / parapet', 'Nowhere to sit'] },
-      { key: 'legit', emoji: '🧺', label: 'Legit reasons', desc: 'Does waiting or lingering look "normal" here — bus stop, vendors, play space?', tags: ['Bus stop', 'Street vendors', 'Play space', 'Queue / waiting area'] },
-      { key: 'eyes', emoji: '👀', label: 'Eyes on street', desc: 'Mixed use, residents and hawkers who naturally watch the street.', tags: ['Vendors', 'Residents', 'Shopfronts', 'Blank frontage'] },
-      { key: 'crowd', emoji: '👥', label: 'People & mix', desc: 'Are other people around, and is it a mixed crowd — women, families, elders?', tags: ['Busy', 'Sparse', 'Empty', 'Women present', 'Mostly men', 'Families'] },
-      { key: 'amenity', emoji: '🚻', label: 'Toilets & amenities', desc: 'Public toilets, drinking water, charging points.', tags: ['Public toilet', 'Drinking water', 'Out of order', 'None'] },
-      { key: 'movement', emoji: '🚶‍♀️', label: 'Moving & transit', desc: 'Footpaths, crossings, bus stops and last-mile options.', tags: ['Even footpath', 'Broken / blocked', 'Safe crossing', 'Stop nearby', 'Detour needed'] },
-      { key: 'belonging', emoji: '🤝', label: 'Belonging', desc: 'Signals of inclusion or exclusion: who dominates the space?', tags: ['Inclusive signage', 'Male-dominated', 'Hostile cues', 'Welcoming'] },
-      { key: 'risk', emoji: '🚨', label: 'Risk cues', desc: 'Staring, harassment hotspots, groups that make you want to hurry.', tags: ['Staring', 'Catcalling spot', 'Loitering groups', 'Intoxicated', 'Isolated'] },
-      { key: 'pleasure', emoji: '🎈', label: 'Pleasure & play', desc: 'Does the place invite enjoyment — greenery, views, music, play?', tags: ['Greenery', 'Water / sea view', 'Games / play', 'Food smells', 'Dull / hostile'] }
+      { key: 'stare', emoji: '👁️', label: 'Staring / watching', desc: 'Someone is persistently staring, watching, tracking with their eyes, or making a woman feel observed.', tags: ['Staring','Repeated watching','Group watching','Following with eyes'] },
+      { key: 'catcall', emoji: '📣', label: 'Catcalling / comments', desc: 'Unwanted calling out, whistles, sexual jokes, comments about appearance or invitations.', tags: ['Whistling','Sexual comment','Body comment','Invitation','Mocking'] },
+      { key: 'gesture', emoji: '🫵', label: 'Sexual gestures', desc: 'Unwanted sexual signs, gestures, sounds or movements directed at a woman.', tags: ['Sexual gesture','Kissing sound','Suggestive sign','Mimicking sex'] },
+      { key: 'follow', emoji: '🚶‍♂️', label: 'Following / trailing', desc: 'A person appears to follow, trail or repeatedly reappear alongside a woman.', tags: ['Following','Repeated reappearance','Vehicle following','Group following'] },
+      { key: 'block', emoji: '🛑', label: 'Blocking / trapping', desc: 'Someone blocks a path, doorway, vehicle, exit or deliberately closes physical space around a woman.', tags: ['Blocked path','Blocked exit','Cornered','Surrounded','Vehicle blocking'] },
+      { key: 'proximity', emoji: '↔️', label: 'Unwanted closeness', desc: 'Someone deliberately comes too close, crowds, corners or invades personal space.', tags: ['Crowding','Cornering','Close approach','Personal-space invasion'] },
+      { key: 'touch', emoji: '✋', label: 'Unwanted touching', desc: 'Unwanted physical contact such as brushing, grabbing, groping or touching a woman.', tags: ['Brushing','Touching','Grabbing','Groping','Unwanted contact'] },
+      { key: 'photo', emoji: '📸', label: 'Unwanted photographing', desc: 'Someone appears to photograph, film or record a woman without consent in a harassing context.', tags: ['Photographing','Filming','Phone pointed','Repeated recording'] },
+      { key: 'exposure', emoji: '⚠️', label: 'Sexual exposure', desc: 'Indecent exposure, flashing or other unwanted sexual display is visible or reported at this place.', tags: ['Flashing','Indecent exposure','Sexual display'] },
+      { key: 'threat', emoji: '😡', label: 'Threat / intimidation', desc: 'Threatening words, gestures, aggressive approach or intimidation make a woman fear escalation.', tags: ['Threat','Aggressive approach','Threatening gesture','Intimidation'] },
+      { key: 'assault', emoji: '🚨', label: 'Sexual / physical assault', desc: 'The image or field record indicates sexual assault, physical assault or attempted assault. Record only what is appropriate and safe to document.', tags: ['Sexual assault','Physical assault','Attempted assault','Violence'] },
+      { key: 'stalking', emoji: '🔁', label: 'Repeated harassment', desc: 'The same person, group or behaviour repeatedly targets women at this place or along this route.', tags: ['Repeated incident','Known hotspot','Same person/group','Pattern'] },
+      { key: 'policing', emoji: '🛡️', label: 'Response / help', desc: 'What support is visible or available when harassment happens?', tags: ['Police nearby','Security','Open shop','Bystanders','Helpline/signage','No help visible'] },
+      { key: 'impact', emoji: '💔', label: 'Effect on movement', desc: 'How does the harassment affect women’s ability to walk, wait, sit, travel or stay in the space?', tags: ['Hurrying','Avoiding place','Changing route','Leaving','Unable to stay','Still comfortable'] },
+      { key: 'other_h', emoji: '✍️', label: 'Other / describe it', desc: 'Something important is happening here that none of the icons describe. Write it in your own words.', tags: [] }
     ]
   },
   {
-    id: 'shecity', emoji: '🏙️', name: 'She City', blurb: 'Feminist design of safer, more inclusive cities (Nicole Kalms).',
+    id: 'street', emoji: '🏙️', name: 'Street conditions',
+    blurb: 'A simpler Why Loiter + She City lens for the surroundings that can enable, amplify or reduce harassment.',
     params: [
-      { key: 'sightline', emoji: '🔭', label: 'Sightlines', desc: 'Can you see ahead and around — prospect without surprise?', tags: ['Long view', 'Blocked view', 'Curved path', 'Mirror / glass'] },
-      { key: 'entrap', emoji: '🕳️', label: 'Entrapment', desc: 'Recesses, hiding places, blind corners, narrow passages.', tags: ['Recess', 'Narrow alley', 'Stairwell', 'Dense foliage', 'Underpass'] },
-      { key: 'light', emoji: '💡', label: 'Lighting', desc: 'Quality, evenness and placement of light.', tags: ['Even', 'Glare', 'Dark patch', 'Broken lamp', 'Human-scale'] },
-      { key: 'wayfind', emoji: '🗺️', label: 'Wayfinding', desc: 'Easy to know where you are and where to go?', tags: ['Clear signs', 'Confusing', 'Landmark', 'Map'] },
-      { key: 'activation', emoji: '🏪', label: 'Activation', desc: 'Active edges and passive surveillance, day and night.', tags: ['Active edge', '24h use', 'Dead frontage', 'Empty at night'] },
-      { key: 'represent', emoji: '🎨', label: 'Representation', desc: 'Does the space signal women belong? Art, ads, imagery.', tags: ['Women represented', 'Sexualised ads', 'Public art', 'Graffiti / tags'] },
-      { key: 'care', emoji: '🧹', label: 'Care', desc: 'Signs of maintenance and ownership.', tags: ['Clean', 'Litter', 'Broken fixtures', 'Fresh paint', 'Vandalism'] },
-      { key: 'escape', emoji: '🚪', label: 'Escape routes', desc: 'Alternatives and ways out if you feel unsafe.', tags: ['Multiple routes', 'Dead end', 'Shop / café', 'Isolated'] },
-      { key: 'surveil', emoji: '📹', label: 'Security & help', desc: 'CCTV, guards, police, help points — and do they feel reassuring?', tags: ['CCTV', 'Guard', 'Police', 'Help point', 'None visible'] },
-      { key: 'voice', emoji: '🗣️', label: 'Voice & ownership', desc: 'Signs the community, especially women, shaped this place.', tags: ['Community-made', 'Imposed', 'Women-led', 'Neglected'] }
+      { key: 'stay', emoji: '🪑', label: 'Places to stay', desc: 'Is there a comfortable reason to stop, sit, wait or spend time here?', tags: ['Seating','Shade','Food / tea','Ledge','Nowhere to sit'] },
+      { key: 'people', emoji: '👥', label: 'People around', desc: 'Who is using the space? Is there a comfortable mix of people and activity?', tags: ['Busy','Quiet','Women present','Families','Mostly men','Mixed ages'] },
+      { key: 'see', emoji: '👀', label: 'See & be seen', desc: 'Can women see what is ahead, and can others naturally see this space?', tags: ['Open view','Blocked view','Shopfronts','Hidden corner','Long sightline'] },
+      { key: 'light', emoji: '💡', label: 'Light', desc: 'Does lighting help people see faces, paths, entrances and activity?', tags: ['Well lit','Dark patch','Glare','Broken light','Human-scale light'] },
+      { key: 'move', emoji: '🚶', label: 'Easy to move', desc: 'Can women walk, cross, turn around and reach transport without awkward detours?', tags: ['Easy path','Blocked path','Safe crossing','Transport nearby','Detour'] },
+      { key: 'help', emoji: '🚪', label: 'Ways out & help', desc: 'Are there alternative routes and nearby people, shops or services if help is needed?', tags: ['Several exits','Dead end','Open shop','Guard / help','Isolated'] },
+      { key: 'care', emoji: '🧹', label: 'Clean & cared for', desc: 'Does the space look maintained, looked after and usable?', tags: ['Clean','Litter','Broken fixture','Cared for','Neglected'] },
+      { key: 'belong', emoji: '🤝', label: 'Feel welcome', desc: 'Does the space signal that women and different kinds of people belong here?', tags: ['Welcoming','Inclusive signs','Male-dominated','Hostile cues','Women represented'] },
+      { key: 'amenities', emoji: '🚻', label: 'Useful facilities', desc: 'Are toilets, water, seating and other everyday facilities available and usable?', tags: ['Toilet','Drinking water','Seating','Charging','None visible'] },
+      { key: 'activity', emoji: '🏪', label: 'Active edges', desc: 'Are shops, homes, vendors or other activities keeping the street visible and active?', tags: ['Open shops','Vendors','Homes facing street','Late activity','Blank frontage'] },
+      { key: 'enjoy', emoji: '🎈', label: 'Comfort & pleasure', desc: 'Does the place invite women to enjoy, pause, meet, play or simply be there?', tags: ['Greenery','View','Play','Food','Pleasant','Dull / hostile'] },
+      { key: 'other_s', emoji: '✍️', label: 'Other / describe it', desc: 'Something important about this street cannot be described by the icons. Write it in your own words.', tags: [] }
     ]
   }
 ];
@@ -403,15 +416,17 @@ const paramOf = a => ALL_PARAMS.find(x => x.key === a.param);
 const emojiFor = a => (paramOf(a) || {}).emoji || '📍';
 
 /* ---------- state ---------- */
-const AUTH_KEY = 'sll.auth', SETUP_KEY = 'sll.setup', LAST_SESS = 'sll.lastSession';
-let SETUP = {}; try { SETUP = JSON.parse(localStorage.getItem(SETUP_KEY) || '{}'); } catch {}
-const cfg = k => (SETUP[k] || CONFIG[k] || '');
+const AUTH_KEY = 'sll.auth', LAST_SESS = 'sll.lastSession';
+const cfg = k => (CONFIG[k] || '');
 const S = {
   auth: null, session: null, rows: null,
-  points: [], currentId: null, selPin: null, activeParam: null, lens: 'loiter',
+  points: [], currentId: null, selPin: null, activeParam: null, lens: 'harassment',
   dirtyAnn: new Set(), dirtyRev: new Set(), deleted: new Set(), viewMode: {}, zip: null, shareLink: ''
 };
 const V = { kind: null, psv: null, markers: null, flat: null, ro: null, host: null };
+let csvOverrideRows = null;
+const dirtyPoints = new Set();
+
 let loadTok = 0, lastMarkerSel = 0, lastLevel = -1;
 const byId = id => S.points.find(p => p.id === id);
 const cur = () => byId(S.currentId);
@@ -511,19 +526,15 @@ async function authCall(mode, userid, pw) {
 
 /* ---------- screens ---------- */
 let authMode = 'login';
-function showScreen(name) { $('#auth').classList.toggle('hidden', name !== 'auth'); $('#sessionPick').classList.toggle('hidden', name !== 'session'); }
+function showScreen(name) { $('#auth').classList.toggle('hidden', name !== 'auth'); $('#sessionPick').classList.toggle('hidden', name !== 'session'); $('#app').classList.toggle('hidden', name !== 'app'); }
 function setAuthMode(m) {
   authMode = m; $$('#authSeg button').forEach(b => b.classList.toggle('on', b.dataset.arg === m));
   $('#auPw2Wrap').classList.toggle('hidden', m !== 'register'); $('#authGo').textContent = m === 'register' ? 'Create my account →' : 'Log in →';
   $('#auPw').autocomplete = m === 'register' ? 'new-password' : 'current-password'; $('#authErr').textContent = '';
 }
-function refreshSetupWarn() {
-  const miss = [!sbConfigured() && 'Supabase', !cfg('GOOGLE_MAPS_KEY') && 'Google Street View', !cfg('CARTO_BASEMAP_KEY') && 'CARTO basemap'].filter(Boolean);
-  $('#setupWarn').textContent = miss.length ? `· not connected yet: ${miss.join(', ')}` : '· connected ✓';
-}
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault(); const err = $('#authErr'); err.textContent = '';
-  if (!sbConfigured()) { err.textContent = 'This copy isn\'t connected to Supabase yet — open Project setup below.'; return; }
+  if (!sbConfigured()) { err.textContent = 'This copy is not connected to Supabase. Ask your project administrator to update the CONFIG block in the HTML code.'; return; }
   const id = $('#auId').value.trim().toLowerCase(), pw = $('#auPw').value;
   if (!ID_RE.test(id)) { err.textContent = 'User ID: 3–24 letters, numbers, dot, dash or underscore (start with a letter or number).'; return; }
   if (pw.length < 6) { err.textContent = 'Password needs at least 6 characters.'; return; }
@@ -534,87 +545,159 @@ $('#authForm').addEventListener('submit', async e => {
 });
 
 /* =====================================================================
-   POINTS CSV (hosted in your GitHub repo) + SESSION PICKER
+   SESSION PICKER + OPTIONAL CSV UPLOAD
    ===================================================================== */
 const GUESS = {
   session: ['session', 'session_no', 'session_number', 'session_id', 'sessionid', 'sess'],
   lat: ['lat', 'latitude', 'y', 'lat_dd'], lng: ['lng', 'lon', 'long', 'longitude', 'x', 'lng_dd'],
   id: ['id', 'point_id', 'pid', 'uid', 'code'], name: ['name', 'label', 'title', 'location', 'place', 'site', 'description']
 };
-const guess = (fields, k) => fields.find(f => GUESS[k].includes(String(f).trim().toLowerCase())) || '';
-function rawUrl(u) {
-  u = (u || 'points.csv').trim(); const m = u.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
-  return m ? `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${m[4]}` : u;
+function parseCsvFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that CSV file.'));
+    reader.onload = () => {
+      try {
+        const res = Papa.parse(String(reader.result).replace(/^﻿/, ''), { header: true, skipEmptyLines: 'greedy' });
+        const f = res.meta.fields || [];
+        const guess = k => f.find(x => GUESS[k].includes(String(x).trim().toLowerCase())) || '';
+        const c = { session: guess('session'), id: guess('id'), name: guess('name'), lat: guess('lat'), lng: guess('lng') };
+        if (!c.lat || !c.lng) throw new Error(`CSV needs latitude and longitude columns (found: ${f.join(', ') || 'none'}).`);
+        const num = v => { let x = String(v ?? '').trim(); if (x.includes(',') && !x.includes('.')) x = x.replace(',', '.'); return parseFloat(x); };
+        const rows = res.data.map((r, i) => ({
+          session: c.session ? String(r[c.session] ?? '').trim() : '',
+          id: c.id ? String(r[c.id] ?? '').trim() : '',
+          name: c.name ? String(r[c.name] ?? '').trim() : '',
+          lat: num(r[c.lat]), lng: num(r[c.lng]), props: r, i
+        })).filter(r => Number.isFinite(r.lat) && Number.isFinite(r.lng) && Math.abs(r.lat) <= 90 && Math.abs(r.lng) <= 180);
+        if (!rows.length) throw new Error('No valid rows with coordinates were found in that CSV.');
+        resolve(rows);
+      } catch (e) { reject(e); }
+    };
+    reader.readAsText(file);
+  });
 }
-async function loadCsv(force = false) {
-  if (S.rows && !force) return S.rows;
-  const url = rawUrl(cfg('POINTS_CSV_URL'));
-  let r; try { r = await fetch(url, { cache: 'no-store' }); } catch { throw new Error(`Couldn't reach ${url}`); }
-  if (!r.ok) throw new Error(`Couldn't load ${url} (HTTP ${r.status}). Check POINTS_CSV_URL in Project setup.`);
-  const res = Papa.parse((await r.text()).replace(/^﻿/, ''), { header: true, skipEmptyLines: 'greedy' });
-  const f = res.meta.fields || [], c = Object.fromEntries(Object.keys(GUESS).map(k => [k, guess(f, k)]));
-  if (!c.lat || !c.lng) throw new Error(`The CSV needs latitude and longitude columns (found: ${f.join(', ') || 'none'}).`);
-  const num = v => { let s = String(v ?? '').trim(); if (s.includes(',') && !s.includes('.')) s = s.replace(',', '.'); return parseFloat(s); };
-  S.rows = res.data.map((r, i) => ({ session: c.session ? String(r[c.session] ?? '').trim() : '1', id: c.id ? String(r[c.id] ?? '').trim() : '', name: c.name ? String(r[c.name] ?? '').trim() : '', lat: num(r[c.lat]), lng: num(r[c.lng]), props: r, i }))
-    .filter(r => isFinite(r.lat) && isFinite(r.lng) && Math.abs(r.lat) <= 90 && Math.abs(r.lng) <= 180);
-  if (!S.rows.length) throw new Error('No valid rows with coordinates in that CSV.');
-  return S.rows;
-}
-async function openSessionPick() {
+function openSessionPick() {
   showScreen('session'); closeModal();
-  $('#spUser').textContent = `👋 Hi ${S.auth.user.userid}`; $('#sessErr').textContent = '';
-  $('#sessIn').value = localStorage.getItem(LAST_SESS) || ''; const chips = $('#sessChips'); chips.innerHTML = '<small>Loading sessions…</small>';
-  try {
-    const rows = await loadCsv(true), map = new Map();
-    rows.forEach(r => map.set(r.session, (map.get(r.session) || 0) + 1));
-    let done = {}; try { (await api('/rest/v1/sll_reviews?select=session,done&done=eq.true&limit=10000')).forEach(r => done[r.session] = (done[r.session] || 0) + 1); } catch {}
-    const list = [...map.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    chips.innerHTML = list.map(s => `<button type="button" class="sess-chip" data-act="sess" data-arg="${esc(s)}"><b>Session ${esc(s)}</b><small>${map.get(s)} points · ${done[s] || 0} done by you</small></button>`).join('');
-  } catch (e) { chips.innerHTML = ''; $('#sessErr').textContent = e.message; }
+  $('#spUser').textContent = `👋 Hi ${S.auth.user.userid}`;
+  $('#sessErr').textContent = '';
+  $('#sessIn').value = localStorage.getItem(LAST_SESS) || '';
 }
-$('#sessForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#sessIn').value.trim(); if (!v) { $('#sessErr').textContent = 'Type your session number first.'; return; } startSession(v); });
+$('#sessForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('#sessIn').value.trim();
+  if (!v) { $('#sessErr').textContent = 'Give this field session a name or number first.'; return; }
+  startSession(v);
+});
 
 /* =====================================================================
    SESSION: load points, cloud + local data, sync
    ===================================================================== */
 const cacheKey = () => `sll.cache.${S.auth.user.id}.${S.session}`;
-async function startSession(sess) {
-  const rows = (await loadCsv().catch(e => { $('#sessErr').textContent = e.message; return null; })); if (!rows) return;
-  const mine = rows.filter(r => r.session.toLowerCase() === String(sess).toLowerCase());
-  if (!mine.length) { $('#sessErr').textContent = `No points found for session “${sess}”.`; return; }
+function csvRowsToPoints(rows, sess) {
+  const hasSession = rows.some(r => String(r.session || '').trim() !== '');
+  const target = String(sess || '').trim().toLowerCase();
+  const mine = hasSession ? rows.filter(r => String(r.session || '').trim().toLowerCase() === target) : rows;
   const seen = new Set();
-  S.points = mine.map((r, i) => { let id = r.id || `P${String(i + 1).padStart(2, '0')}`, u = id, k = 2; while (seen.has(u)) u = `${id}-${k++}`; seen.add(u); return { id: u, name: r.name || u, lat: r.lat, lng: r.lng, props: r.props, annotations: [], overall: null, done: false, img: null }; });
-  S.session = String(mine[0].session); localStorage.setItem(LAST_SESS, S.session);
-  S.currentId = null; S.selPin = null; S.zip = null; S.shareLink = ''; S.dirtyAnn = new Set(); S.dirtyRev = new Set(); S.deleted = new Set(); S.viewMode = {};
-  loadCache();
-  showScreen(null); closeModal(); setTab('map'); lastLevel = levelInfo(xpNow()).i; renderAll(true);
-  const first = S.points.find(p => !p.done) || S.points[0]; selectPoint(first.id, { fly: false, tab: false });
-  setSync('busy'); try { await loadCloud(); setSync('ok'); } catch (e) { setSync('err', e.message); }
-  renderAll(false); lastLevel = levelInfo(xpNow()).i; if (cur()) { renderList(); renderCode(); }
-  toast(`Session ${S.session} loaded — ${S.points.length} points`, { emoji: '🗺️' });
+  return mine.map((r, i) => {
+    let id = r.id || `P${String(i + 1).padStart(2, '0')}`, u = id, k = 2;
+    while (seen.has(u)) u = `${id}-${k++}`;
+    seen.add(u);
+    return { id: u, name: r.name || id, lat: r.lat, lng: r.lng, props: r.props || {} };
+  });
 }
+async function beginCoding(useCsv = false) {
+  if (useCsv) {
+    if (!csvOverrideRows?.length) { toast('Choose a CSV file first.', { emoji: '📄' }); return; }
+    const csvPoints = csvRowsToPoints(csvOverrideRows, S.session);
+    const existing = new Map(S.points.map(p => [p.id, p]));
+    csvPoints.forEach(p => { if (!existing.has(p.id)) { S.points.push({ ...p, annotations: [], overall: null, done: false, img: null }); dirtyPoints.add(p.id); } });
+  }
+  if (!S.points.length) { toast('Tap the map to create a place, or use GPS.', { emoji: '📍' }); return; }
+  renderAll(true);
+  if (!S.currentId) await selectPoint(S.points.find(p => !p.done)?.id || S.points[0].id, { fly: false, tab: false });
+  savePoints();
+  setSync('busy'); try { await syncNow(); await loadCloud(); setSync('ok'); } catch (e) { setSync('err', e.message); }
+}
+async function startSession(sess) {
+  S.session = String(sess).trim();
+  localStorage.setItem(LAST_SESS, S.session);
+  csvOverrideRows = null;
+  S.points = []; S.currentId = null; S.selPin = null; S.zip = null; S.shareLink = ''; S.dirtyAnn = new Set(); S.dirtyRev = new Set(); S.deleted = new Set(); S.viewMode = {}; dirtyPoints.clear();
+  loadCache(); showScreen('app'); closeModal(); setTab('map'); lastLevel = levelInfo(xpNow()).i; renderAll();
+  setSync('busy');
+  try { await loadCloud(); setSync('ok'); }
+  catch (e) { setSync('err', e.message); }
+  renderAll(true);
+  if (S.points.length) await selectPoint(S.points.find(p => !p.done)?.id || S.points[0].id, { fly: false, tab: false });
+  else { renderToolbar(); renderCode(); setTab('map'); toast('Tap the map to add your first place, or use GPS.', { emoji: '📍', ms: 5000 }); }
+}
+async function handleCsvUpload(file) {
+  if (!file) return;
+  try {
+    const rows = await parseCsvFile(file); csvOverrideRows = rows;
+    const hasSession = rows.some(r => String(r.session || '').trim() !== '');
+    const matched = hasSession ? rows.filter(r => String(r.session || '').trim().toLowerCase() === String(S.session).trim().toLowerCase()) : rows;
+    if (!matched.length) { toast(`No CSV rows match session “${S.session}”.`, { emoji: '⚠️' }); return; }
+    toast(hasSession ? `CSV loaded — ${matched.length} points match this session` : `CSV loaded — ${rows.length} points available`, { emoji: '📄' });
+    await beginCoding(true);
+  } catch (e) { toast(e.message || 'Could not load the CSV.', { emoji: '⚠️' }); }
+}
+function createPoint(lat, lng, name = '') {
+  if (!S.session) return;
+  const id = `P${Date.now().toString(36).toUpperCase()}`;
+  const p = { id, name: name || `Place ${S.points.length + 1}`, lat: +lat, lng: +lng, props: { source: 'map' }, annotations: [], overall: null, done: false, img: null };
+  S.points.push(p); S.currentId = p.id; S.selPin = null; dirtyPoints.add(p.id); touchPt(p); savePoints(); save(); renderAll(false);
+  map.setView([p.lat, p.lng], Math.max(map.getZoom(), 16)); selectPoint(p.id, { fly: false, tab: false });
+  toast('Place added — drag its map marker to adjust it, then code the image.', { emoji: '📍', ms: 4500 });
+}
+function locatePoint() {
+  if (!navigator.geolocation) { toast('Location is not available in this browser.', { emoji: '⚠️' }); return; }
+  toast('Finding your location…', { emoji: '📍' });
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude, longitude } = pos.coords;
+    createPoint(latitude, longitude, 'My location');
+    map.setView([latitude, longitude], 18);
+  }, err => toast(err.code === 1 ? 'Location permission was denied.' : 'Could not get your location.', { emoji: '⚠️' }), { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
+}
+async function captureCurrentPhoto() {
+  const p = cur(); if (!p) { toast('Create or select a point first.', { emoji: '📍' }); return; }
+  $('#fileCamera').dataset.pointId = p.id; $('#fileCamera').click();
+}
+async function handleCurrentCamera(file) {
+  const p = byId($('#fileCamera').dataset.pointId || S.currentId); if (!p || !file) return;
+  await idb.put(imgKey(p), file); p.img = { source: 'Field photo', name: file.name || 'camera-photo.jpg', attribution: 'Field photo' };
+  touchPt(p); save(); renderAll(false); await showImage(p); toast('Photo attached to this place.', { emoji: '📷' });
+}
+function savePoints() { try { localStorage.setItem(cacheKey()+'.points', JSON.stringify(S.points.map(p => ({id:p.id,name:p.name,lat:p.lat,lng:p.lng,props:p.props||{},img:p.img||null,overall:p.overall??null,done:!!p.done})))); } catch {} }
 function loadCache() {
   try {
-    const o = JSON.parse(localStorage.getItem(cacheKey()) || 'null'); if (!o) return;
-    S.points.forEach(p => { const c = o.points?.[p.id]; if (c) { p.annotations = (c.annotations || []).map(a => ({ tags: [], note: '', score: null, ...a })); p.overall = c.overall ?? null; p.done = !!c.done; p.img = c.img || null; } });
-    S.dirtyAnn = new Set(o.dirtyAnn || []); S.dirtyRev = new Set(o.dirtyRev || []); S.deleted = new Set(o.deleted || []);
+    const o = JSON.parse(localStorage.getItem(cacheKey()) || 'null');
+    const saved = o?.points || null;
+    if (saved) S.points = Object.entries(saved).map(([id,c]) => ({ id, name:c.name||id, lat:+c.lat, lng:+c.lng, props:c.props||{}, annotations:(c.annotations||[]).map(a=>({tags:[],note:'',score:null,...a})), overall:c.overall??null, done:!!c.done, img:c.img||null })).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
+    else { const legacy=JSON.parse(localStorage.getItem(cacheKey()+'.points')||'[]'); if(Array.isArray(legacy)) S.points=legacy.map(p=>({...p,annotations:[],overall:p.overall??null,done:!!p.done,img:p.img||null})).filter(p=>Number.isFinite(+p.lat)&&Number.isFinite(+p.lng)); }
+    if (!o) return;
+    S.dirtyAnn = new Set(o.dirtyAnn || []); S.dirtyRev = new Set(o.dirtyRev || []); S.deleted = new Set(o.deleted || []); dirtyPoints.clear(); (o.dirtyPoints||[]).forEach(id=>dirtyPoints.add(id));
   } catch {}
 }
 const writeCache = debounce(() => {
   if (!S.session || !S.auth) return;
-  const points = {}; S.points.forEach(p => { if (p.annotations.length || p.overall != null || p.done || p.img) points[p.id] = { annotations: p.annotations, overall: p.overall, done: p.done, img: p.img }; });
-  try { localStorage.setItem(cacheKey(), JSON.stringify({ points, dirtyAnn: [...S.dirtyAnn], dirtyRev: [...S.dirtyRev], deleted: [...S.deleted] })); } catch {}
+  const points = {}; S.points.forEach(p => { points[p.id] = { name:p.name, lat:p.lat, lng:p.lng, props:p.props||{}, annotations: p.annotations, overall: p.overall, done: p.done, img: p.img }; });
+  try { localStorage.setItem(cacheKey(), JSON.stringify({ points, dirtyAnn: [...S.dirtyAnn], dirtyRev: [...S.dirtyRev], deleted: [...S.deleted], dirtyPoints:[...dirtyPoints] })); savePoints(); } catch {}
 }, 300);
 const syncSoon = debounce(() => syncNow(), 1200);
 const save = () => { writeCache(); syncSoon(); };
 const touchAnn = a => { S.dirtyAnn.add(a.id); S.deleted.delete(a.id); };
-const touchPt = p => S.dirtyRev.add(p.id);
+const touchPt = p => { S.dirtyRev.add(p.id); dirtyPoints.add(p.id); };
 
 const rowToAnn = r => ({ id: r.id, param: r.parameter, paramLabel: r.parameter_label, lens: r.lens, score: r.score, tags: r.tags || [], note: r.note || '', view: r.view_type, yaw: r.yaw, pitch: r.pitch, x: r.x, y: r.y, created: Date.parse(r.created_at) || Date.now() });
 const annToRow = (p, a) => ({ id: a.id, user_id: S.auth.user.id, user_name: S.auth.user.userid, session: S.session, point_id: p.id, point_name: p.name, lat: p.lat, lng: p.lng, lens: a.lens || null, parameter: a.param, parameter_label: a.paramLabel, score: a.score, tags: a.tags, note: a.note, view_type: a.view, yaw: a.yaw ?? null, pitch: a.pitch ?? null, x: a.x ?? null, y: a.y ?? null, image_source: p.img?.source || null, created_at: new Date(a.created).toISOString(), updated_at: new Date().toISOString() });
 const revToRow = p => ({ user_id: S.auth.user.id, user_name: S.auth.user.userid, session: S.session, point_id: p.id, overall: p.overall, done: p.done, image_source: p.img?.source || null, updated_at: new Date().toISOString() });
+const pointToRow = p => ({ user_id:S.auth.user.id, user_name:S.auth.user.userid, session:S.session, point_id:p.id, point_name:p.name, lat:p.lat, lng:p.lng, source:p.props?.source||'map', image_source:p.img?.source||null, updated_at:new Date().toISOString() });
 async function loadCloud() {
-  const [ann, rev] = await Promise.all([api(`/rest/v1/sll_annotations?session=eq.${enc(S.session)}&select=*&limit=10000`), api(`/rest/v1/sll_reviews?session=eq.${enc(S.session)}&select=*&limit=10000`)]);
+  const [cloudPoints, ann, rev] = await Promise.all([api(`/rest/v1/sll_points?session=eq.${enc(S.session)}&select=*&limit=10000`), api(`/rest/v1/sll_annotations?session=eq.${enc(S.session)}&select=*&limit=10000`), api(`/rest/v1/sll_reviews?session=eq.${enc(S.session)}&select=*&limit=10000`)]);
+  const localById = new Map(S.points.map(p=>[p.id,p]));
+  cloudPoints.forEach(r=>{ if(dirtyPoints.has(r.point_id)) return; const local=localById.get(r.point_id); if(local){ local.name=r.point_name||local.name; local.lat=+r.lat; local.lng=+r.lng; local.props=local.props||{}; } else { const c={id:r.point_id,name:r.point_name||r.point_id,lat:+r.lat,lng:+r.lng,props:{source:r.source||'cloud'},annotations:[],overall:null,done:false,img:r.image_source?{source:r.image_source,attribution:r.image_source}:null}; S.points.push(c); localById.set(c.id,c); } });
   S.points.forEach(p => { p.annotations = p.annotations.filter(a => S.dirtyAnn.has(a.id)); });
   ann.forEach(r => { const p = byId(r.point_id); if (!p || S.deleted.has(r.id) || p.annotations.some(a => a.id === r.id)) return; p.annotations.push(rowToAnn(r)); });
   S.points.forEach(p => p.annotations.sort((a, b) => a.created - b.created));
@@ -629,19 +712,21 @@ function setSync(state, msg) {
 }
 async function syncNow() {
   if (!S.auth || !S.session) return; if (syncing) { syncAgain = true; return; }
-  const annIds = [...S.dirtyAnn], revIds = [...S.dirtyRev], delIds = [...S.deleted];
-  if (!annIds.length && !revIds.length && !delIds.length) { setSync('ok'); return; }
-  S.dirtyAnn.clear(); S.dirtyRev.clear(); S.deleted.clear(); syncing = true; setSync('busy');
+  const annIds = [...S.dirtyAnn], revIds = [...S.dirtyRev], delIds = [...S.deleted], ptIds=[...dirtyPoints];
+  if (!annIds.length && !revIds.length && !delIds.length && !ptIds.length) { setSync('ok'); return; }
+  S.dirtyAnn.clear(); S.dirtyRev.clear(); S.deleted.clear(); ptIds.forEach(id=>dirtyPoints.delete(id)); syncing = true; setSync('busy');
   try {
     const annRows = []; annIds.forEach(id => { for (const p of S.points) { const a = p.annotations.find(x => x.id === id); if (a) { annRows.push(annToRow(p, a)); break; } } });
     const revRows = revIds.map(byId).filter(Boolean).map(revToRow);
+    const pointRows = ptIds.map(byId).filter(Boolean).map(pointToRow);
     const up = { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } };
+    if (pointRows.length) await api('/rest/v1/sll_points?on_conflict=user_id,session,point_id', { ...up, body: pointRows });
     if (annRows.length) await api('/rest/v1/sll_annotations?on_conflict=id', { ...up, body: annRows });
     if (revRows.length) await api('/rest/v1/sll_reviews?on_conflict=user_id,session,point_id', { ...up, body: revRows });
     if (delIds.length) await api(`/rest/v1/sll_annotations?id=in.(${delIds.map(i => `"${i}"`).join(',')})`, { method: 'DELETE' });
     setSync('ok');
   } catch (e) {
-    annIds.forEach(i => S.dirtyAnn.add(i)); revIds.forEach(i => S.dirtyRev.add(i)); delIds.forEach(i => S.deleted.add(i));
+    annIds.forEach(i => S.dirtyAnn.add(i)); revIds.forEach(i => S.dirtyRev.add(i)); delIds.forEach(i => S.deleted.add(i)); ptIds.forEach(i=>dirtyPoints.add(i));
     setSync('err', e.message); setTimeout(syncSoon, 20000); writeCache();
   } finally { syncing = false; if (syncAgain) { syncAgain = false; syncSoon(); } }
 }
@@ -660,6 +745,7 @@ function initMap() {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/attribution/">CARTO</a>'
   }).addTo(map);
   layer = L.layerGroup().addTo(map);
+  map.on('click', e => { if (S.session && !modalOpen()) createPoint(e.latlng.lat, e.latlng.lng); });
   new ResizeObserver(() => map.invalidateSize()).observe($('#map'));
 }
 function avgOf(p) { const s = p.annotations.filter(a => a.score != null).map(a => a.score); return s.length ? s.reduce((x, y) => x + y, 0) / s.length : null; }
@@ -672,8 +758,8 @@ function mkIcon(p) { const st = pointState(p), sel = p.id === S.currentId; retur
 function renderMarkers(fit = false) {
   layer.clearLayers(); markers = {};
   S.points.forEach(p => {
-    const m = L.marker([p.lat, p.lng], { icon: mkIcon(p), zIndexOffset: p.id === S.currentId ? 1000 : 0 }).bindTooltip(esc(p.name), { direction: 'top', offset: [0, -10] });
-    m.on('click', () => selectPoint(p.id, { fly: false })); m.addTo(layer); markers[p.id] = m;
+    const m = L.marker([p.lat, p.lng], { icon: mkIcon(p), draggable: true, zIndexOffset: p.id === S.currentId ? 1000 : 0 }).bindTooltip(esc(p.name), { direction: 'top', offset: [0, -10] });
+    m.on('click', () => selectPoint(p.id, { fly: false })); m.on('dragend', () => { const q=m.getLatLng(); p.lat=q.lat; p.lng=q.lng; dirtyPoints.add(p.id); touchPt(p); save(); renderList(); renderToolbar(); }); m.addTo(layer); markers[p.id] = m;
   });
   if (fit) fitMap();
 }
@@ -713,6 +799,7 @@ function renderToolbar() {
     <div class="tb-nav"><button class="icon" data-act="prev" title="Previous point (P)">◀</button><button class="icon" data-act="next" title="Next point (N)">▶</button></div>
     <div class="tb-title"><b>${esc(p.name)}</b><small>${esc(p.id)} · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small></div>
     <div class="tb-actions">
+      <button class="btn sm" data-act="camera" title="Take a field photo">📷 Camera</button>
       <button class="btn sm" data-act="gsv" title="Fetch the closest Google Street View">🛣 Street View</button>
       <button class="btn sm" data-act="upload">⬆ Own image</button>
       ${p.img && V.kind ? `<button class="btn sm" data-act="togglemode" title="Switch between 360° and flat view">${V.kind === 'sphere' ? '🌐 360° view' : '🖼 Flat view'}</button>` : ''}
@@ -733,9 +820,9 @@ function renderCode() {
     const pr = paramOf(a), base = pr ? pr.tags : [], tagList = [...base, ...a.tags.filter(t => !base.includes(t))];
     editor = `<section class="card"><div class="card-h"><b>${esc(emojiFor(a))} ${esc(a.paramLabel || (pr && pr.label) || 'Pin')}</b><button class="icon" data-act="delpin" title="Delete pin (Del)">🗑</button></div>
       <p class="q">${esc(pr ? pr.desc : '')}</p>
-      <div class="scores">${SCORE.map(s => `<button class="sc ${a.score === s.n ? 'on' : ''}" style="--c:${scoreColor(s.n)}" data-act="score" data-arg="${s.n}" title="Key ${s.n}"><span>${s.emoji}</span><small>${s.label}</small></button>`).join('')}</div>
+      ${String(a.param || '').startsWith('other') ? `<label class="fine" style="display:block;margin:8px 0 5px"><b>Describe it in your own words</b></label><textarea class="note" id="noteIn" placeholder="What is happening here that the icons cannot describe? Be specific about what you see, hear or experienced.">${esc(a.note)}</textarea>` : `<div class="scores">${SCORE.map(s => `<button class="sc ${a.score === s.n ? 'on' : ''}" style="--c:${scoreColor(s.n)}" data-act="score" data-arg="${s.n}" title="Key ${s.n}"><span>${s.emoji}</span><small>${s.label}</small></button>`).join('')}</div>
       <div class="tags">${tagList.map(t => `<button class="chip ${a.tags.includes(t) ? 'on' : ''}" data-act="tag" data-arg="${esc(t)}">${esc(t)}</button>`).join('')}<input class="tag-in" id="tagIn" placeholder="+ tag" maxlength="28"></div>
-      <textarea class="note" id="noteIn" placeholder="What do you notice? e.g. “shutters down after 7pm, nowhere to sit”">${esc(a.note)}</textarea>
+      <textarea class="note" id="noteIn" placeholder="What do you notice? e.g. “shutters down after 7pm, nowhere to sit”">${esc(a.note)}</textarea>`}
       <button class="btn sm block" data-act="selpin" data-arg="">✔ Done with this pin</button></section>`;
   } else {
     const ap = ALL_PARAMS.find(x => x.key === S.activeParam) || lens.params[0];
@@ -774,8 +861,8 @@ function setOverlay(kind, d = {}) {
   o.className = 'overlay'; const hasKey = !!cfg('GOOGLE_MAPS_KEY');
   const upl = '<button class="btn" data-act="upload">⬆ Load my own image</button>';
   if (kind === 'loading' || kind === 'searching') o.innerHTML = `<div class="ov-card"><div class="spin"></div><h3>${kind === 'searching' ? 'Finding the closest Street View…' : 'Loading image…'}</h3><p>${esc(d.text || 'Hang tight')}</p></div>`;
-  else if (kind === 'empty') o.innerHTML = `<div class="ov-card"><div class="big">🛣️</div><h3>No image for this point yet</h3><p>${hasKey ? 'I\'ll look for the closest Google Street View, or you can load your own panorama or photo.' : 'Load your own panorama or photo — or ask your coordinator to add a Google Maps key in Project setup so Street View loads automatically.'}</p><div class="row">${hasKey ? '<button class="btn primary" data-act="gsv">🛣 Get Street View</button>' : ''}${upl}</div></div>`;
-  else if (kind === 'nokey') o.innerHTML = `<div class="ov-card"><div class="big">🔑</div><h3>Street View isn't set up</h3><p>This copy has no Google Maps API key yet. Add one in Project setup (Street View Static API) — or just load your own image.</p><div class="row"><button class="btn primary" data-act="setup">⚙ Project setup</button>${upl}</div></div>`;
+  else if (kind === 'empty') o.innerHTML = `<div class="ov-card"><div class="big">🛣️</div><h3>No image for this point yet</h3><p>${hasKey ? 'I\'ll look for the closest Google Street View, or you can load your own panorama or photo.' : 'Load your own panorama or photo. Ask your project administrator to configure Google Street View in the HTML code if you need Street View.'}</p><div class="row">${hasKey ? '<button class="btn primary" data-act="gsv">🛣 Get Street View</button>' : ''}${upl}</div></div>`;
+  else if (kind === 'nokey') o.innerHTML = `<div class="ov-card"><div class="big">🔑</div><h3>Street View isn't set up</h3><p>This copy has no Google Maps API key configured in the HTML code yet. Ask your project administrator to configure Street View, or load your own image.</p><div class="row">${upl}</div>`;
   else if (kind === 'none') o.innerHTML = `<div class="ov-card"><div class="big">🤷‍♀️</div><h3>No Street View within ${d.radius || 120} m</h3><p>Google has no imagery close to this point. Try a wider search, or load your own image.</p><div class="row"><button class="btn primary" data-act="wider">🔎 Search 400 m</button>${upl}</div></div>`;
   else if (kind === 'error') o.innerHTML = `<div class="ov-card"><div class="big">😕</div><h3>Couldn't load the image</h3><p>${esc(d.text || 'Something went wrong.')}</p><div class="row"><button class="btn" data-act="gsv">↻ Try again</button>${upl}</div></div>`;
   else if (kind === 'lost') o.innerHTML = `<div class="ov-card"><div class="big">📦</div><h3>Image isn't on this device</h3><p>Your pins are safe in the cloud, but the picture itself is stored only in the browser it was loaded in. Load it again to see your pins.</p><div class="row">${hasKey ? '<button class="btn primary" data-act="gsv">🛣 Get Street View</button>' : ''}${upl}</div></div>`;
@@ -935,7 +1022,8 @@ function completePoint(e) {
    EXPORT: annotated JPGs in a .zip + sharing
    ===================================================================== */
 const slug = s => String(s).normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'point';
-const stamp = () => new Date().toISOString().slice(0, 10);
+const formatDateTime = (d = new Date()) => new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' }).format(d);
+const stamp = () => { const d = new Date(); const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`; };
 const deg = r => r == null ? '' : +(r * 180 / Math.PI).toFixed(3);
 const safe = v => (typeof v === 'string' && /^[=+\-@]/.test(v)) ? "'" + v : v;
 function annRows() {
@@ -967,7 +1055,7 @@ async function renderAnnotated(p) {
     return { a, i, head, body, h: (28 + body.length * 25 + 12) * u };
   });
   const colH = Array(cols).fill(0); entries.forEach((e, i) => { e.col = i % cols; e.y = colH[e.col]; colH[e.col] += e.h; });
-  const headH = 96 * u, footH = 44 * u, legendH = headH + (entries.length ? Math.max(...colH) : 34 * u) + footH;
+  const headH = 122 * u, footH = 44 * u, legendH = headH + (entries.length ? Math.max(...colH) : 34 * u) + footH;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H + Math.round(legendH); const ctx = cv.getContext('2d');
   ctx.drawImage(bm, 0, 0, W, H);
   entries.forEach(({ a, i }) => {
@@ -985,7 +1073,8 @@ async function renderAnnotated(p) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#ff8fb8'; ctx.font = font('800', 30); ctx.fillText('She Loiter Lens', pad, L0 + 38 * u);
   ctx.fillStyle = '#fff'; ctx.font = font('700', 22); ctx.fillText(`Session ${S.session} · ${p.id} — ${p.name}`, pad, L0 + 68 * u);
   ctx.fillStyle = '#cbbde0'; ctx.font = font('400', 18); const ov = p.overall != null ? `   ·   Overall feeling: ${SCORE[p.overall - 1].emoji} ${p.overall}/5 ${SCORE[p.overall - 1].label}` : '';
-  ctx.fillText(`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}   ·   coder ${S.auth.user.userid}   ·   ${stamp()}${ov}`, pad, L0 + 90 * u);
+  ctx.fillText(`${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}${ov}`, pad, L0 + 90 * u);
+  ctx.fillStyle = '#ffcfdf'; ctx.font = font('700', 18); ctx.fillText(`Coded / exported: ${formatDateTime(new Date())}`, pad, L0 + 114 * u);
   if (!entries.length) { ctx.fillStyle = '#cbbde0'; ctx.fillText('No pins were placed on this image.', pad, L0 + headH + 22 * u); }
   entries.forEach(e => {
     const x = pad + e.col * (colW + pad), y = L0 + headH + e.y, col = scoreColor(e.a.score);
@@ -1057,7 +1146,7 @@ async function createShareLink() {
 }
 
 /* =====================================================================
-   MODALS: insights, help, account, project setup
+   MODALS: insights, help, account
    ===================================================================== */
 function openInsights() {
   const stats = {}, tags = {}; let n = 0;
@@ -1073,24 +1162,42 @@ function openInsights() {
 function openHelp() {
   openModal('How She Loiter Lens works', `
     <p><b>1 · Log in</b> with a user ID and password — your pins are saved to your account as you go.</p>
-    <p><b>2 · Pick a session.</b> The points for that session load from the project's CSV file.</p>
-    <p><b>3 · Get an image.</b> Opening a point fetches the closest <b>Google Street View</b> automatically (stitched into a 360° view), or press <i>Own image</i> to load a panorama or photo. Dropping a folder of images named after the point IDs (<code>S1-01.jpg</code>…) matches them automatically.</p>
+    <p><b>2 · Record places.</b> Tap the map or use your phone location, then drag markers to the exact spot. You can also use the session CSV.</p>
+    <p><b>3 · Code an image.</b> Opening a point fetches the closest <b>Google Street View</b> automatically (stitched into a 360° view), or press <i>Own image</i> to load a panorama or photo. Dropping a folder of images named after the point IDs (<code>S1-01.jpg</code>…) matches them automatically.</p>
     <p><b>4 · Click &amp; rate.</b> Choose an icon from <i>Why Loiter</i> or <i>She City</i>, click on the image to drop a pin, then score it 1–5, add tags and a note. Finish each point with a gut-check.</p>
     <p><b>5 · Finish &amp; export.</b> Download a .zip of annotated JPGs and share it by phone, email or WhatsApp.</p>
     <details><summary>⌨️ Shortcuts</summary><p class="kbd"><kbd>1</kbd>–<kbd>5</kbd> rate selected pin · <kbd>Del</kbd> delete pin · <kbd>Esc</kbd> deselect · <kbd>N</kbd> / <kbd>P</kbd> next / previous point · <kbd>D</kbd> complete point</p></details>
-    <details><summary>🧩 About the icon sets</summary><p class="muted">The icons and prompts are interpretations of recurring themes in <i>Why Loiter? Women and Risk on Mumbai Streets</i> (Phadke, Khan &amp; Ranade) — lingering, legitimacy, amenities, belonging, pleasure — and feminist urban design work such as <i>She City</i> (Nicole Kalms) — sightlines, entrapment, activation, representation, care. They are not official instruments.</p></details>
+    <details><summary>🧩 About the icon sets</summary><p class="muted">The coding prompts combine themes from <i>Why Loiter?</i> and <i>She City</i> into plain-language questions about staying, people, visibility, light, movement, help, care, belonging, facilities, activity, pleasure and risk. They are a practical synthesis, not an official instrument.</p></details>
     <details><summary>🙏 Credits</summary><p class="muted">Maps © OpenStreetMap / CARTO · Leaflet · Photo Sphere Viewer · PapaParse · JSZip · Street View imagery © Google.</p></details>`);
 }
 function openAccount() {
   const body = openModal('Account', `<p>Signed in as <b>${esc(S.auth?.user.userid || '')}</b>${S.session ? ` · session <b>${esc(S.session)}</b>` : ''}.</p>
-    <div class="row"><button class="btn" data-act="chsession">🔁 Change session</button><button class="btn" data-act="setup">⚙ Project setup</button><button class="btn danger" data-act="logout">Sign out</button></div>
-    <p class="fine" style="margin-top:12px">Pins sync to your account automatically. Images stay in this browser, so load them again if you switch device.</p>`);
+    <div class="row"><button class="btn" data-act="chsession">🔁 Change session</button><button class="btn danger" data-act="logout">Sign out</button></div>
+    <p class="fine" style="margin-top:12px">Points, coding pins and review status sync to your account. Photos are stored in this browser, so load them again if you switch device.</p>`);
   return body;
 }
 const SQL = `-- She Loiter Lens: run this once in Supabase → SQL editor.
 -- Also: Authentication → Providers → Email → switch OFF "Confirm email".
 
--- 1) Pins (one row per annotation)
+-- 1) Recorded map points (one row per observation location)
+create table if not exists public.sll_points (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  user_name text,
+  session text not null,
+  point_id text not null,
+  point_name text,
+  lat double precision not null,
+  lng double precision not null,
+  source text,
+  image_source text,
+  updated_at timestamptz default now(),
+  primary key (user_id, session, point_id)
+);
+alter table public.sll_points enable row level security;
+create policy "own points" on public.sll_points for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 2) Pins (one row per annotation)
 create table if not exists public.sll_annotations (
   id text primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -1111,7 +1218,7 @@ alter table public.sll_annotations enable row level security;
 create policy "own annotations" on public.sll_annotations for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- 2) Per-point review state (gut check + done)
+-- 3) Per-point review state (gut check + done)
 create table if not exists public.sll_reviews (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   user_name text, session text not null, point_id text not null,
@@ -1124,7 +1231,7 @@ alter table public.sll_reviews enable row level security;
 create policy "own reviews" on public.sll_reviews for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- 3) Private bucket for shareable .zip links
+-- 4) Private bucket for shareable .zip links
 insert into storage.buckets (id, name, public) values ('exports', 'exports', false) on conflict (id) do nothing;
 create policy "own exports insert" on storage.objects for insert to authenticated
   with check (bucket_id = 'exports' and (storage.foldername(name))[1] = auth.uid()::text);
@@ -1132,21 +1239,6 @@ create policy "own exports read" on storage.objects for select to authenticated
   using (bucket_id = 'exports' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "own exports update" on storage.objects for update to authenticated
   using (bucket_id = 'exports' and (storage.foldername(name))[1] = auth.uid()::text);`;
-function openSetup() {
-  const v = k => esc(SETUP[k] || CONFIG[k] || '');
-  const body = openModal('Project setup', `<p class="muted">Admin settings. Saved in this browser only — or hard-code them in the <code>CONFIG</code> block at the top of <code>index.html</code> so everyone gets them.</p>
-    <label class="field"><span>Supabase project URL</span><input data-k="SUPABASE_URL" placeholder="https://xxxx.supabase.co" value="${v('SUPABASE_URL')}"></label>
-    <label class="field"><span>Supabase anon / publishable key</span><input data-k="SUPABASE_KEY" type="password" value="${v('SUPABASE_KEY')}"></label>
-    <label class="field"><span>Google Maps API key (Street View Static API)</span><input data-k="GOOGLE_MAPS_KEY" type="password" value="${v('GOOGLE_MAPS_KEY')}"></label>
-    <label class="field"><span>CARTO Basemaps API key</span><input data-k="CARTO_BASEMAP_KEY" type="password" value="${v('CARTO_BASEMAP_KEY')}" placeholder="Paste your CARTO Basemaps key"></label>
-    <label class="field"><span>Points CSV (relative path or GitHub raw / blob URL)</span><input data-k="POINTS_CSV_URL" placeholder="points.csv" value="${v('POINTS_CSV_URL')}"></label>
-    <div class="row"><button class="btn primary" id="setSave">Save</button></div>
-    <details><summary>🧰 Supabase setup SQL</summary><pre id="sqlPre">${esc(SQL)}</pre><button class="btn sm" data-act="copysql">Copy SQL</button></details>`);
-  $('#setSave', body).onclick = () => {
-    SETUP = {}; $$('[data-k]', body).forEach(i => { if (i.value.trim()) SETUP[i.dataset.k] = i.value.trim(); });
-    localStorage.setItem(SETUP_KEY, JSON.stringify(SETUP)); S.rows = null; refreshSetupWarn(); closeModal(); toast('Setup saved', { emoji: '✅' });
-  };
-}
 async function logout() {
   try { await syncNow(); } catch {} try { if (S.auth) api('/auth/v1/logout', { method: 'POST' }).catch(() => {}); } catch {}
   S.auth = null; S.session = null; S.points = []; S.currentId = null; localStorage.removeItem(AUTH_KEY); destroyViewer(); closeModal(); setAuthMode('login'); showScreen('auth'); renderAll(); $('#hud').innerHTML = '';
@@ -1160,7 +1252,11 @@ async function act(name, arg, el, e) {
   switch (name) {
     case 'close': closeModal(); break;
     case 'authtab': setAuthMode(arg); break;
-    case 'setup': openSetup(); break;
+    case 'locatePoint': locatePoint(); break;
+    case 'uploadCsv': $('#fileCsv').click(); break;
+    case 'camera': captureCurrentPhoto(); break;
+    case 'beginCoding': beginCoding(false); break;
+
     case 'account': openAccount(); break;
     case 'chsession': try { await syncNow(); } catch {} closeModal(); S.session = null; openSessionPick(); break;
     case 'logout': logout(); break;
@@ -1200,6 +1296,8 @@ async function act(name, arg, el, e) {
 document.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'A' && b.target === '_blank') return; act(b.dataset.act, b.dataset.arg, b, e); });
 
 /* ---------- files, drag & drop, inputs, keyboard ---------- */
+$('#fileCsv').addEventListener('change', e => { const f=e.target.files?.[0]; if(f) handleCsvUpload(f); e.target.value=''; });
+$('#fileCamera').addEventListener('change', e => { const f=e.target.files?.[0]; if(f) handleCurrentCamera(f); e.target.value=''; });
 $('#fileImg').addEventListener('change', e => { if (!cur() && e.target.files.length === 1) toast('Select a point first', { emoji: '📍' }); else handleImageFiles(e.target.files); e.target.value = ''; });
 $('#search').addEventListener('input', renderList); $('#filter').addEventListener('change', renderList);
 let dragDepth = 0;
@@ -1207,7 +1305,7 @@ addEventListener('dragenter', e => { if (S.session && e.dataTransfer?.types?.inc
 addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dragmask').classList.add('hidden'); } });
 addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#dragmask').classList.add('hidden'); if (S.session) handleImageFiles(e.dataTransfer.files); });
-document.addEventListener('input', e => { if (e.target.id === 'noteIn') { const a = selPinObj(); if (a) { a.note = e.target.value; touchAnn(a); save(); } } });
+document.addEventListener('input', e => { if (e.target.id === 'noteIn') { const a = selPinObj(); if (a) { a.note = e.target.value; if (String(a.param || '').startsWith('other')) { const clean = e.target.value.trim().replace(/\s+/g,' '); a.paramLabel = clean ? `Other: ${clean.slice(0, 55)}${clean.length > 55 ? '…' : ''}` : 'Other / describe it'; } touchAnn(a); save(); renderCode(); renderPins(); } } });
 document.addEventListener('change', e => { if (e.target.id === 'noteIn') { refreshItem(cur()); renderHeader(); } });
 document.addEventListener('keydown', e => {
   if (e.target.id === 'tagIn' && e.key === 'Enter') { const a = selPinObj(), v = e.target.value.trim(); if (a && v && !a.tags.includes(v)) { a.tags.push(v); touchAnn(a); pinsChanged(); setTimeout(() => $('#tagIn')?.focus(), 0); } return; }
@@ -1225,7 +1323,7 @@ addEventListener('online', () => syncSoon());
    BOOT
    ===================================================================== */
 (async function boot() {
-  initMap(); await idb.open(); setAuthMode('login'); refreshSetupWarn(); renderAll();
+  initMap(); await idb.open(); setAuthMode('login'); renderAll();
   if (!sbConfigured()) { showScreen('auth'); return; }
   try {
     const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
