@@ -1305,8 +1305,8 @@ addEventListener('dragenter', e => { if (S.session && e.dataTransfer?.types?.inc
 addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dragmask').classList.add('hidden'); } });
 addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#dragmask').classList.add('hidden'); if (S.session) handleImageFiles(e.dataTransfer.files); });
-document.addEventListener('input', e => { if (e.target.id === 'noteIn') { const a = selPinObj(); if (a) { a.note = e.target.value; if (String(a.param || '').startsWith('other')) { const clean = e.target.value.trim().replace(/\s+/g,' '); a.paramLabel = clean ? `Other: ${clean.slice(0, 55)}${clean.length > 55 ? '…' : ''}` : 'Other / describe it'; } touchAnn(a); save(); renderCode(); renderPins(); } } });
-document.addEventListener('change', e => { if (e.target.id === 'noteIn') { refreshItem(cur()); renderHeader(); } });
+document.addEventListener('input', e => { if (e.target.id === 'noteIn') { const a = selPinObj(); if (a) { a.note = e.target.value; if (String(a.param || '').startsWith('other')) { const clean = e.target.value.trim().replace(/\s+/g,' '); a.paramLabel = clean ? `Other: ${clean.slice(0, 55)}${clean.length > 55 ? '…' : ''}` : 'Other / describe it'; } touchAnn(a); save(); renderPins(); } } });
+document.addEventListener('change', e => { if (e.target.id === 'noteIn') { refreshItem(cur()); renderHeader(); renderCode(); } });
 document.addEventListener('keydown', e => {
   if (e.target.id === 'tagIn' && e.key === 'Enter') { const a = selPinObj(), v = e.target.value.trim(); if (a && v && !a.tags.includes(v)) { a.tags.push(v); touchAnn(a); pinsChanged(); setTimeout(() => $('#tagIn')?.focus(), 0); } return; }
   if (e.key === 'Escape' && modalOpen()) return closeModal();
