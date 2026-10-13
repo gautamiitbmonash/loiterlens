@@ -233,10 +233,22 @@ summary{cursor:pointer;font-weight:700}
   .tabs button.on{color:var(--brand)}
   .exp-grid{grid-template-columns:1fr}
   .bar-row{grid-template-columns:110px 1fr 34px 28px}
-  .map-wrap{flex:1}
+  .map-wrap{flex:0 0 34%;min-height:150px}
+  .report-action{flex:0 0 auto;padding:8px 0 6px}
+  .report-button{width:104px;height:104px}
+  .report-button .report-icon{font-size:25px}
+  .report-button .report-title{font-size:13px}
+  .report-button .report-subtitle{font-size:9px}
+  .list-head{padding-top:4px}
 }
 
 .map-wrap{position:relative}.map-hint{background:#fff;padding:7px 9px;border-radius:10px;font-size:11px;font-weight:700;box-shadow:0 2px 10px rgba(42,26,58,.12)}.map-field-actions{position:absolute;z-index:500;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap}.map-field-actions .btn{box-shadow:0 2px 10px rgba(42,26,58,.16);background:#fff}.map-field-actions .btn:active{transform:translateY(1px)}
+.report-action{display:flex;justify-content:center;align-items:center;padding:12px 8px;flex:0 0 auto}
+.report-button{width:118px;height:118px;border:0;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(145deg,var(--brand),var(--violet));color:#fff;box-shadow:0 8px 20px rgba(122,77,255,.28);transition:transform .15s,box-shadow .15s;touch-action:manipulation}
+.report-button:active{transform:scale(.96);box-shadow:0 4px 12px rgba(122,77,255,.24)}
+.report-button .report-icon{font-size:27px;line-height:1.1}
+.report-button .report-title{font-family:'Bricolage Grotesque',sans-serif;font-size:14px;font-weight:800;letter-spacing:.06em;line-height:1.2}
+.report-button .report-subtitle{font-size:10px;line-height:1.15;font-weight:500;color:rgba(255,255,255,.9);text-align:center}
 </style>
 <script type="importmap">
 {"imports":{
@@ -263,7 +275,8 @@ summary{cursor:pointer;font-weight:700}
   </header>
 
   <aside class="side">
-    <div class="map-wrap"><div id="map"></div><div class="map-field-actions"><span class="map-hint">Tap map to add · drag markers to move</span><button class="btn sm" data-act="locatePoint" title="Record your current GPS location">📍 GPS</button><button class="btn sm" data-act="uploadCsv" title="Optional: import points from CSV">＋ CSV</button></div><button class="mini" data-act="fit" title="Fit all points">⤢</button></div>
+    <div class="map-wrap"><div id="map"></div><div class="map-field-actions"><span class="map-hint">Tap map to add · drag markers to move</span><button class="btn sm" data-act="uploadCsv" title="Optional: import points from CSV">＋ CSV</button></div><button class="mini" data-act="fit" title="Fit all points">⤢</button></div>
+    <div class="report-action"><button class="report-button" data-act="locatePoint" title="Report a place at your current location"><span class="report-icon" aria-hidden="true">📍</span><span class="report-title">REPORT</span><span class="report-subtitle">Current Location</span></button></div>
     <div class="list-head">
       <input id="search" placeholder="🔎 Search points…" autocomplete="off">
       <select id="filter"><option value="all">All</option><option value="todo">To do</option><option value="done">Done</option></select>
@@ -284,7 +297,7 @@ summary{cursor:pointer;font-weight:700}
   <nav class="tabs">
     <button data-act="tab" data-arg="map"><span>🗺️</span>Points</button>
     <button data-act="tab" data-arg="view"><span>🖼️</span>Image</button>
-    <button data-act="tab" data-arg="code"><span>🎯</span>Code</button>
+    <button data-act="tab" data-arg="code"><span>🎯</span>Tag</button>
   </nav>
 </div>
 
@@ -346,7 +359,7 @@ summary{cursor:pointer;font-weight:700}
 const CONFIG = {
   SUPABASE_URL: 'https://qnidqvklagwjrihlocxh.supabase.co',              // https://xxxx.supabase.co
   SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuaWRxdmtsYWd3anJpaGxvY3hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1NDEwNzIsImV4cCI6MjEwMDExNzA3Mn0.R98ONf6DTove9-5Vp1zj-Q7-mc4zt9wid-Zpxny6ngs',              // anon / publishable key
-  GOOGLE_MAPS_KEY: '',           // key with "Street View Static API" enabled (restrict it to your site's URL!)
+  GOOGLE_MAPS_KEY: 'AIzaSyBnwnf7X6pnw2qqBtY4OoFJybGr4J7XmZg',           // key with "Street View Static API" enabled (restrict it to your site's URL!)
   CARTO_BASEMAP_KEY: 'cb1_4d4m_1_a57cade09591c8022907f223',         // CARTO Basemaps API key; restrict it to your site's domain
   EMAIL_DOMAIN: 'sheloiterlens.app', // user IDs become <id>@this-domain behind the scenes (no email is ever sent)
   EXPORT_BUCKET: 'exports'       // Supabase Storage bucket used for share links
